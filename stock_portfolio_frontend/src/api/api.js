@@ -9,9 +9,26 @@
 const ZERODHA_API_ROOT = process.env.REACT_APP_ZERODHA_API_ROOT || 'https://api.kite.trade';         // MCP/Kite API REST base
 const ZERODHA_WS_ROOT = process.env.REACT_APP_ZERODHA_WS_ROOT || 'wss://ws.kite.trade/';             // MCP websocket root
 
-// Read static API KEY and SECRET from the environment. These are embedded at build time, never exposed in logs.
-const ZERODHA_API_KEY = process.env.REACT_APP_ZERODHA_API_KEY;
-const ZERODHA_API_SECRET = process.env.REACT_APP_ZERODHA_API_SECRET;
+/**
+ * Read static API KEY and SECRET from the environment. These are embedded at build time in React,
+ * never exposed in logs.
+ * NOTE: If these are undefined, double check your .env file, and always restart `npm start` after editing .env.
+ */
+let ZERODHA_API_KEY = process.env.REACT_APP_ZERODHA_API_KEY;
+let ZERODHA_API_SECRET = process.env.REACT_APP_ZERODHA_API_SECRET;
+
+// Helpful in-browser debugging for why login is shown
+if (!ZERODHA_API_KEY || !ZERODHA_API_SECRET) {
+  // This message helps devs know if their env vars weren't picked up correctly
+  // (It will show only in the dev console, never to the user)
+  // eslint-disable-next-line
+  console.warn(
+    "[StockSmart][Env Debug] One or both of REACT_APP_ZERODHA_API_KEY or REACT_APP_ZERODHA_API_SECRET are missing.\n" +
+    "Check your stock_portfolio_frontend/.env file and make sure they are:\n" +
+    "REACT_APP_ZERODHA_API_KEY=xxxxxxxxx\nREACT_APP_ZERODHA_API_SECRET=xxxxxxxxx\n" +
+    "Also, you MUST stop and re-run `npm start` after making changes to .env—React only loads environment variables at boot!"
+  );
+}
 
 /**
  * Helper: Add auth headers for all requests that require authentication with API key.

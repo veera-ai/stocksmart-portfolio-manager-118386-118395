@@ -11,6 +11,8 @@ This project provides a minimal React template with a clean, modern UI and minim
 
 ## Getting Started
 
+**Important: When updating `.env` variables such as REACT_APP_ZERODHA_API_KEY or REACT_APP_ZERODHA_API_SECRET, you must fully stop and restart the development server (`npm start`) for the changes to take effect. React only injects environment variables at build-time. A browser reload or hot reload is not sufficient.**
+
 In the project directory, you can run:
 
 ### `npm start`

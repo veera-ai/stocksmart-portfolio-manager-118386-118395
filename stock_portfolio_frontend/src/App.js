@@ -140,7 +140,14 @@ function App() {
             <div style={{ marginBottom: 12, color: "var(--text-secondary)" }}>
               Zerodha API credentials are required.<br />
               Please define <b>REACT_APP_ZERODHA_API_KEY</b> and <b>REACT_APP_ZERODHA_API_SECRET</b>
-              <br />in your <code>.env</code> file and restart the app.
+              <br />in your <code>.env</code> file and <b>fully stop and restart</b> the app (<code>npm start</code>).
+              <br />
+              <ul style={{margin: "8px 0 0", paddingLeft: 22, fontSize: 13, color: "#ed9211"}}>
+                <li>React environment variables are only loaded at startup. A browser refresh or hot reload is NOT enough.</li>
+                <li>.env variables must use the <b>REACT_APP_</b> prefix for frontend code.</li>
+                <li>If the login screen persists, double-check .env for typos or trailing spaces, and that you fully restarted.</li>
+                <li>See the README for environment variable troubleshooting tips.</li>
+              </ul>
             </div>
             {loginError && (
               <div style={{ color: 'crimson', marginBottom: 10 }}>{loginError}</div>
