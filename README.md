@@ -1,1 +1,3 @@
-# stocksmart-portfolio-manager-118386-118395
+# Project Repository
+
+This is the initial README file for the project.
