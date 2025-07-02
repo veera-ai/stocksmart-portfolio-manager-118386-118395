@@ -1,47 +1,87 @@
-//
 /**
  * API wrapper for connecting to Zerodha MCP and Kite APIs for live portfolio data, price streaming, recommendations, and trading.
- * All credentials (including MCP key and secret) are expected to be securely stored and accessed via environment variables using process.env,
- * never hardcoded. Use `getMcpCredentials()` to access the MCP credentials.
+ * Credentials/secrets for MCP are no longer stored in .env or statically. Instead, user authenticates with username, password, and MFA.
+ * Provides methods for login, authentication, and MCP API usage via user credentials.
  */
 
-// PUBLIC_INTERFACE
-/**
- * Returns the MCP credentials (key and secret) from the environment.
- * Throws if not set.
- */
-export function getMcpCredentials() {
-  /**
-   * Provides MCP credentials from .env.
-   * @returns {{ key: string, secret: string }}
-   */
-  const key = process.env.REACT_APP_MCP_KEY;
-  const secret = process.env.REACT_APP_MCP_SECRET;
-  if (!key || !secret) {
-    throw new Error('Missing MCP credentials (REACT_APP_MCP_KEY, REACT_APP_MCP_SECRET) in environment. Please check your .env setup.');
-  }
-  return { key, secret };
-}
-// MCP docs: https://kite.trade/docs/websocket/ (for streaming) and https://kite.trade/docs/connect/v3/market-quotes/ (for HTTP quotes)
-// Kite connect: https://kite.trade/docs/connect/v3/
-
+// MCP protocol base endpoints (can use user-provided tokens after auth)
 const ZERODHA_API_ROOT = process.env.REACT_APP_ZERODHA_API_ROOT || 'https://api.kite.trade';         // MCP/Kite API REST base
 const ZERODHA_WS_ROOT = process.env.REACT_APP_ZERODHA_WS_ROOT || 'wss://ws.kite.trade/';             // MCP websocket root
-const ZERODHA_API_KEY = process.env.REACT_APP_ZERODHA_API_KEY;           // Secure, provided by backend/.env
-const ZERODHA_ACCESS_TOKEN = process.env.REACT_APP_ZERODHA_ACCESS_TOKEN; // Secure, provided by backend/.env
+
+// MCP secure credentials/session management
+let mcpSession = {
+  apiKey: undefined, // issued/returned after user login (Zerodha MCP)
+  accessToken: undefined, // issued/returned after user login (Zerodha MCP)
+  userId: undefined // optional: track user
+};
 
 /**
- * Helper: Add auth headers for all requests.
+ * PUBLIC_INTERFACE
+ * Logs in using MCP protocol: username, password, and (if required) MFA.
+ * On success, sets session API tokens for future MCP calls.
+ *
+ * @param {string} username
+ * @param {string} password
+ * @param {string} mfa
+ * @returns {Promise<boolean>} true if login succeeds
+ */
+export async function mcpLogin({ username, password, mfa }) {
+  /**
+   * For Zerodha MCP, typically:
+   * 1. POST /session/token with username, password, (and possibly) mfa.
+   * 2. Parse response for access_token, API key, userId, etc.
+   */
+  // Example endpoint (official docs): https://api.kite.trade/session/token
+  // This is a simulation; real flow might require redirection or more parameters.
+
+  let url = `${ZERODHA_API_ROOT}/session/token`;
+  let body = {
+    user_id: username,
+    password: password,
+    twofa_value: mfa
+  };
+  let response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Kite-Version': '3' },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error("MCP login failed: " + (error.message || response.statusText));
+  }
+  const data = await response.json();
+  // Expect: { data: { access_token, public_token, user_id, api_key, ... }, ... }
+  if (!data || !data.data || !data.data.access_token || !data.data.api_key) {
+    throw new Error("MCP login did not return API tokens. Please retry.");
+  }
+  mcpSession.apiKey = data.data.api_key;
+  mcpSession.accessToken = data.data.access_token;
+  mcpSession.userId = data.data.user_id || username;
+  return true;
+}
+
+/**
+ * PUBLIC_INTERFACE
+ * Logs out user and clears MCP session credentials.
+ */
+export function mcpLogout() {
+  mcpSession.apiKey = undefined;
+  mcpSession.accessToken = undefined;
+  mcpSession.userId = undefined;
+}
+
+/**
+ * Helper: Add auth headers for all requests that require user login.
  */
 function getAuthHeaders() {
-  if (!ZERODHA_API_KEY || !ZERODHA_ACCESS_TOKEN) {
+  if (!mcpSession.apiKey || !mcpSession.accessToken) {
     throw new Error(
-      "Missing Zerodha API credentials. Please configure REACT_APP_ZERODHA_API_KEY and REACT_APP_ZERODHA_ACCESS_TOKEN in your .env"
+      "Not authenticated. Please log in to Zerodha MCP first."
     );
   }
   return {
     'X-Kite-Version': '3',
-    'Authorization': `token ${ZERODHA_API_KEY}:${ZERODHA_ACCESS_TOKEN}`,
+    'Authorization': `token ${mcpSession.apiKey}:${mcpSession.accessToken}`,
     'Content-Type': 'application/json',
   };
 }
@@ -125,7 +165,11 @@ export function subscribeToLivePrices(symbols, onUpdate) {
   const tokens = symbols.map(s => window.__kite_instrument_tokens[s]).filter(Boolean);
   if (!tokens.length) return () => {};
 
-  const ws = new WebSocket(`${ZERODHA_WS_ROOT}?api_key=${ZERODHA_API_KEY}&access_token=${ZERODHA_ACCESS_TOKEN}`);
+  // Use tokens from session (runtime login)
+  if (!mcpSession.apiKey || !mcpSession.accessToken) {
+    throw new Error("Not authenticated to MCP: please login first.");
+  }
+  const ws = new WebSocket(`${ZERODHA_WS_ROOT}?api_key=${mcpSession.apiKey}&access_token=${mcpSession.accessToken}`);
   let isSubscribed = false;
 
   ws.onopen = function () {
