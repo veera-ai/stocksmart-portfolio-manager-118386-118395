@@ -1,7 +1,27 @@
 //
-// API wrapper for connecting to real Zerodha MCP and Kite APIs for live portfolio data, price streaming, recommendations, and trading.
-// Any credentials or API keys are expected to be securely stored and accessed via environment variables, not hardcoded here.
-//
+/**
+ * API wrapper for connecting to Zerodha MCP and Kite APIs for live portfolio data, price streaming, recommendations, and trading.
+ * All credentials (including MCP key and secret) are expected to be securely stored and accessed via environment variables using process.env,
+ * never hardcoded. Use `getMcpCredentials()` to access the MCP credentials.
+ */
+
+// PUBLIC_INTERFACE
+/**
+ * Returns the MCP credentials (key and secret) from the environment.
+ * Throws if not set.
+ */
+export function getMcpCredentials() {
+  /**
+   * Provides MCP credentials from .env.
+   * @returns {{ key: string, secret: string }}
+   */
+  const key = process.env.REACT_APP_MCP_KEY;
+  const secret = process.env.REACT_APP_MCP_SECRET;
+  if (!key || !secret) {
+    throw new Error('Missing MCP credentials (REACT_APP_MCP_KEY, REACT_APP_MCP_SECRET) in environment. Please check your .env setup.');
+  }
+  return { key, secret };
+}
 // MCP docs: https://kite.trade/docs/websocket/ (for streaming) and https://kite.trade/docs/connect/v3/market-quotes/ (for HTTP quotes)
 // Kite connect: https://kite.trade/docs/connect/v3/
 
