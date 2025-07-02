@@ -24,32 +24,47 @@ let mcpSession = {
  * @param {string} password
  * @param {string} mfa
  * @returns {Promise<boolean>} true if login succeeds
+ * @throws {Error} Throws MFA required error if additional step needed
  */
 export async function mcpLogin({ username, password, mfa }) {
   /**
    * For Zerodha MCP, typically:
    * 1. POST /session/token with username, password, (and possibly) mfa.
-   * 2. Parse response for access_token, API key, userId, etc.
+   * 2. If missing MFA, receives MFA required error.
+   * 3. If all provided, parses for access_token, API key, userId.
    */
-  // Example endpoint (official docs): https://api.kite.trade/session/token
-  // This is a simulation; real flow might require redirection or more parameters.
-
   let url = `${ZERODHA_API_ROOT}/session/token`;
   let body = {
     user_id: username,
-    password: password,
-    twofa_value: mfa
+    password: password
+    // Only send twofa_value if provided
   };
+  if (mfa) body.twofa_value = mfa;
   let response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Kite-Version': '3' },
     body: JSON.stringify(body)
   });
+
   if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error("MCP login failed: " + (error.message || response.statusText));
+    let errorData = {};
+    try { errorData = await response.json(); } catch { }
+    // Simulated: if error response code/message indicates MFA required
+    if (
+      (response.status === 403 || response.status === 401) &&
+      errorData &&
+      /mfa.*required|otp.*required|2fa.*required/i.test(errorData.message || "")
+    ) {
+      throw new Error("MFA required: Please enter your 2FA/OTP code");
+    }
+    throw new Error("MCP login failed: " + ((errorData && errorData.message) || response.statusText));
   }
   const data = await response.json();
+
+  // Some APIs indicate MFA required in a separate field
+  if (data && data.error_type && /mfa.*required|otp.*required|2fa.*required/i.test(data.error_type || "")) {
+    throw new Error("MFA required: Please enter your 2FA/OTP code");
+  }
   // Expect: { data: { access_token, public_token, user_id, api_key, ... }, ... }
   if (!data || !data.data || !data.data.access_token || !data.data.api_key) {
     throw new Error("MCP login did not return API tokens. Please retry.");
