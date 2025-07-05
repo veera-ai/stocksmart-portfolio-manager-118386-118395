@@ -215,6 +215,29 @@ app.get('/api/session/status', (req, res) => {
   res.json({ loggedIn: !!req.session.kite_access_token, user_id: req.session.kite_user_id || null });
 });
 
+/**
+ * PUBLIC_INTERFACE
+ * POST /api/logout
+ * @openapi
+ * summary: Logs out user and destroys session.
+ * description: Logs out authenticated user by clearing session credentials.
+ * tags:
+ *   - Session
+ * responses:
+ *   200:
+ *     description: Successfully logged out
+ */
+app.post('/api/logout', (req, res) => {
+  req.session.destroy(err => {
+    if (err) {
+      // Defensive: return 500 if error destroying session
+      return res.status(500).json({ error: "Failed to destroy session" });
+    }
+    res.clearCookie("sid");
+    res.json({ message: "Logout successful" });
+  });
+});
+
 // Helper for correct redirect_uri per deployment
 function buildRedirectUri(req) {
   // Use env override if provided (recommended in production)
