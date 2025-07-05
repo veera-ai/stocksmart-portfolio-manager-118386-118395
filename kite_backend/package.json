@@ -13,7 +13,9 @@
     "dotenv": "^16.3.1",
     "axios": "^1.6.8",
     "cors": "^2.8.5",
-    "path": "^0.12.7"
+    "path": "^0.12.7",
+    "swagger-ui-express": "^4.6.2",
+    "yamljs": "^0.3.0"
   },
   "devDependencies": {
     "nodemon": "^2.0.22"

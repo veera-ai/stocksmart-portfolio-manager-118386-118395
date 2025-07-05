@@ -9,6 +9,11 @@ const axios = require('axios');
 const cors = require('cors');
 const path = require('path');
 
+// --- Swagger UI ---
+const swaggerUi = require('swagger-ui-express');
+const YAML = require('yamljs');
+const swaggerDocument = YAML.load(path.join(__dirname, 'swagger.yaml'));
+
 /**
  * Kite Connect OAuth & Portfolio API backend service.
  * 
@@ -22,6 +27,27 @@ const path = require('path');
  */
 
 const app = express();
+
+// --- Swagger UI Docs Endpoint ---
+// PUBLIC_INTERFACE
+/**
+ * Serve interactive Swagger UI docs at /api/docs using swagger-ui-express.
+ * Reads the OpenAPI spec from swagger.yaml.
+ * 
+ * @openapi
+ * GET /api/docs
+ * summary: Interactive Swagger UI for Kite Backend API
+ * description: Launches Swagger UI for browsing and live-testing all REST endpoints (as described in swagger.yaml). Use for documentation and API testing.
+ * tags:
+ *   - Docs
+ * responses:
+ *   200:
+ *     description: Swagger UI for API docs
+ */
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
+  explorer: true,
+  customSiteTitle: "Kite Backend API Docs"
+}));
 
 const APP_PORT = process.env.KITE_BACKEND_PORT || 5001;
 const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:3000";
