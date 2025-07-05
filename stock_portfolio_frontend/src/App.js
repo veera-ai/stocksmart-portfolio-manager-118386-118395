@@ -11,27 +11,26 @@ import {
   fetchLivePrices,
   fetchRecommendations,
   placeTrade,
-  mcpLogin,
-  mcpLogout,
 } from './api/api';
 
 /**
  * App for Stock Portfolio Management.
- * Now uses API key/secrets from environment: no login prompt needed.
+ * OAuth2-based Zerodha Kite login/portfolio flow.
  */
 function App() {
   // PUBLIC_INTERFACE
   /**
    * Root Dashboard Application for Stock Portfolio Management.
-   * Handles theming and navigation between dashboard pages.
-   * Securely checks MCP (Zerodha) credential presence at startup.
+   * Handles theming, navigation, OAuth session, and error states.
    */
   const [theme, setTheme] = useState('dark');
   const [selected, setSelected] = useState('portfolio');
   const [portfolio, setPortfolio] = useState([]);
   const [prices, setPrices] = useState({});
   const [refreshTick, setRefreshTick] = useState(0);
+
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [loginError, setLoginError] = useState(null);
 
   // Theme effect
@@ -39,31 +38,49 @@ function App() {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
-  // Check API key/secret presence at app start; if present, "log in"
+  // On startup, check session status from backend
   useEffect(() => {
-    async function checkLogin() {
+    async function checkSession() {
+      setCheckingSession(true);
       try {
-        await mcpLogin();
-        setIsLoggedIn(true);
+        const resp = await fetch(`${process.env.REACT_APP_ZERODHA_API_ROOT || 'http://localhost:5001'}/api/session/status`, {
+          credentials: 'include',
+        });
+        if (!resp.ok) throw new Error("Session status check failed.");
+        const data = await resp.json();
+        setIsLoggedIn(Boolean(data.loggedIn));
         setLoginError(null);
       } catch (e) {
         setIsLoggedIn(false);
-        setLoginError((e && e.message) || "Authentication failed (API key/secret missing)");
+        setLoginError((e && e.message) || "Authentication/session check failed");
       }
+      setCheckingSession(false);
     }
-    checkLogin();
+    checkSession();
+    // Also check status after OAuth redirect
+    if (window.location.search.includes("oauth=success")) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      checkSession();
+    }
   }, []);
 
   // Portfolio loading effect - only after auth
   useEffect(() => {
     if (!isLoggedIn) return;
     async function load() {
-      const data = await fetchPortfolio();
-      setPortfolio(data);
-      // Load live prices
-      const syms = data.map((stock) => stock.symbol);
-      const live = await fetchLivePrices(syms);
-      setPrices(live);
+      try {
+        setLoginError(null);
+        const data = await fetchPortfolio();
+        setPortfolio(data);
+        // Load live prices
+        const syms = data.map((stock) => stock.symbol);
+        const live = await fetchLivePrices(syms);
+        setPrices(live);
+      } catch (err) {
+        setPortfolio([]);
+        setPrices({});
+        setLoginError(err && err.message ? err.message : "Unable to load portfolio data.");
+      }
     }
     load();
     // Re-fetch prices periodically for real-time analysis
@@ -74,11 +91,24 @@ function App() {
   // Theme toggler
   const toggleTheme = () => setTheme(t => t === 'light' ? 'dark' : 'light');
 
-  // Logout toggles stateful re-authentication (does not truly destroy API key)
-  const handleLogout = () => {
-    mcpLogout();
+  // Logout (kill session at backend)
+  const handleLogout = async () => {
+    try {
+      await fetch(`${process.env.REACT_APP_ZERODHA_API_ROOT || 'http://localhost:5001'}/api/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch {
+      // ignore error
+    }
     setIsLoggedIn(false);
-    setLoginError("Logged out (reload page to retry API key authentication).");
+    setPortfolio([]);
+    setLoginError("Logged out. Please login again.");
+  };
+
+  // Start OAuth2 login (redirect to backend login endpoint)
+  const handleKiteLogin = () => {
+    window.location.href = `${process.env.REACT_APP_ZERODHA_API_ROOT || 'http://localhost:5001'}/api/login/kite`;
   };
 
   // Navigation
@@ -117,6 +147,96 @@ function App() {
     }
   }, [selected, portfolio, prices]);
 
+  // Auth overlay & error presentation
+  let authOverlay = null;
+  if (!isLoggedIn) {
+    // Show spinner during initial session check
+    if (checkingSession) {
+      authOverlay = (
+        <div
+          style={{
+            position: 'fixed', left: 0, top: 0, width: '100vw', height: '100vh', zIndex: 99,
+            background: 'rgba(20,20,30,0.70)', display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }}>
+          <div style={{
+            background: 'var(--bg-primary)', padding: 32, borderRadius: 8,
+            boxShadow: '0 4px 20px rgba(40,50,75,0.23)', minWidth: 320,
+            display: 'flex', flexDirection: 'column', alignItems: 'center'
+          }}>
+            <h2 style={{ marginBottom: 24, color: "var(--accent)" }}>Checking Authentication...</h2>
+            <div className="center-text">Please wait...</div>
+          </div>
+        </div>
+      );
+    } else {
+      // Not authed: show login with Kite UI
+      authOverlay = (
+        <div
+          style={{
+            position: 'fixed', left: 0, top: 0, width: '100vw', height: '100vh', zIndex: 99,
+            background: 'rgba(20,20,30,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }}>
+          <div style={{
+            background: 'var(--bg-primary)', padding: 38, borderRadius: 10,
+            boxShadow: '0 4px 24px rgba(40,50,75,0.27)', minWidth: 340,
+            display: 'flex', flexDirection: 'column', alignItems: 'center'
+          }}>
+            <h2 style={{ marginBottom: 14, color: "var(--accent)", fontWeight: 600, letterSpacing: 1 }}>Zerodha Kite Login</h2>
+            <div style={{ marginBottom: 13, color: "var(--text-secondary)", fontSize: 16, textAlign: "center" }}>
+              Securely login with your Zerodha account to view your portfolio.<br/>
+              We never see or store your credentials.
+            </div>
+            <button
+              className="action-btn"
+              style={{
+                marginBottom: 20,
+                fontWeight: 700,
+                fontSize: '1.08em',
+                letterSpacing: 0.1,
+                padding: "11px 34px",
+                background: "var(--primary)",
+                color: "var(--button-text)",
+                borderRadius: 7,
+                border: "none",
+                boxShadow: "0 1px 5px rgba(20,50,90,0.10)",
+                cursor: "pointer"
+              }}
+              onClick={handleKiteLogin}
+              aria-label="Login with Zerodha Kite"
+            >
+              <img
+                src="https://kite.trade/static/images/kite-logo.svg"
+                alt="Kite Logo"
+                style={{
+                  height: 24, marginRight: 11, verticalAlign: "middle", filter: "grayscale(0.34)"
+                }}
+              />
+              Login with Kite
+            </button>
+            {loginError && (
+              <div style={{ color: '#e5533d', marginBottom: 8, textAlign: "center" }}>
+                {loginError}
+                <br />
+                {/* OAuth-specific instructions */}
+                {loginError.toLowerCase().includes("auth") || loginError.toLowerCase().includes("oauth") ? (
+                  <div style={{ fontSize: 14, color: "#ad5e1c", marginTop: 8 }}>
+                    If redirected here after login, your session may have expired.<br />
+                    Please try again or check your internet connection.<br />
+                    If issues persist, contact support or view console logs.
+                  </div>
+                ) : null}
+              </div>
+            )}
+            <div style={{ fontSize: 13, color: "#ad5e1c", marginTop: 5, maxWidth: 340 }}>
+              By logging in you agree to connect securely via Zerodha's OAuth flow.<br/>
+              We do not store your sensitive account data.
+            </div>
+          </div>
+        </div>
+      );
+    }
+  }
+
   return (
     <div className="App">
       <button
@@ -126,35 +246,9 @@ function App() {
       >
         {theme === 'light' ? '🌙 Dark' : '☀️ Light'}
       </button>
-      {!isLoggedIn && (
-        <div
-          style={{
-            position: 'fixed', left: 0, top: 0, width: '100vw', height: '100vh', zIndex: 99,
-            background: 'rgba(20,20,30,0.70)', display: 'flex', alignItems: 'center', justifyContent: 'center'
-          }}>
-          <div style={{
-            background: 'var(--bg-primary)', padding: 32, borderRadius: 8,
-            boxShadow: '0 4px 20px rgba(40,50,75,0.23)', minWidth: 320, display: 'flex', flexDirection: 'column'
-          }}>
-            <h2 style={{ marginBottom: 16, color: "var(--accent)" }}>API Key Required</h2>
-            <div style={{ marginBottom: 12, color: "var(--text-secondary)" }}>
-              Zerodha API credentials are required.<br />
-              Please define <b>REACT_APP_ZERODHA_API_KEY</b> and <b>REACT_APP_ZERODHA_API_SECRET</b>
-              <br />in your <code>.env</code> file and <b>fully stop and restart</b> the app (<code>npm start</code>).
-              <br />
-              <ul style={{margin: "8px 0 0", paddingLeft: 22, fontSize: 13, color: "#ed9211"}}>
-                <li>React environment variables are only loaded at startup. A browser refresh or hot reload is NOT enough.</li>
-                <li>.env variables must use the <b>REACT_APP_</b> prefix for frontend code.</li>
-                <li>If the login screen persists, double-check .env for typos or trailing spaces, and that you fully restarted.</li>
-                <li>See the README for environment variable troubleshooting tips.</li>
-              </ul>
-            </div>
-            {loginError && (
-              <div style={{ color: 'crimson', marginBottom: 10 }}>{loginError}</div>
-            )}
-          </div>
-        </div>
-      )}
+
+      {authOverlay}
+
       {isLoggedIn &&
         <div className="dashboard-layout">
           <Sidebar selected={selected} onSelect={setSelected} />
@@ -166,7 +260,7 @@ function App() {
                 borderRadius: 6, padding: "7px 14px", zIndex: 9, fontWeight: 600, cursor: "pointer"
               }}
               onClick={handleLogout}
-              aria-label="Logout MCP"
+              aria-label="Logout"
             >
               Logout
             </button>
