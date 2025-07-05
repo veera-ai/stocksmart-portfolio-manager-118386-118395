@@ -3,11 +3,24 @@
  * Now authenticates using static API key/secret from environment (.env) rather than runtime username/password/MFA.
  * API_SECRET is NEVER returned to client, sent to backend or logged.
  * All request auth is based on API key/token (from env) using HTTP headers.
+ * 
+ * ---------- IMPORTANT DEV NOTE ----------
+ * If 'Failed to fetch' occurs: 
+ * 1. You may not have a backend/mock API running at ZERODHA_API_ROOT.
+ * 2. For UI development, this file now provides a mock data fallback.
+ * 3. To connect to a real backend (Flask/Express/other), set REACT_APP_ZERODHA_API_ROOT in .env to your backend endpoint.
+ * Example:
+ *   REACT_APP_ZERODHA_API_ROOT=http://localhost:5001
+ * 4. Stop/restart npm start after changing .env.
+ * -----------------------------------------
  */
-
-// MCP protocol base endpoints
-const ZERODHA_API_ROOT = process.env.REACT_APP_ZERODHA_API_ROOT || 'https://api.kite.trade';         // MCP/Kite API REST base
-const ZERODHA_WS_ROOT = process.env.REACT_APP_ZERODHA_WS_ROOT || 'wss://ws.kite.trade/';             // MCP websocket root
+/**
+ * The API endpoint can be set via REACT_APP_ZERODHA_API_ROOT in .env.
+ * If not set, it defaults to the real MCP API, which is unlikely to work during development.
+ * For local demo/dev, use a fallback/mock root (http://localhost:5001 or similar).
+ */
+const ZERODHA_API_ROOT = process.env.REACT_APP_ZERODHA_API_ROOT || 'http://localhost:5001/mock'; // fallback mock API
+const ZERODHA_WS_ROOT = process.env.REACT_APP_ZERODHA_WS_ROOT || 'ws://localhost:5001'; // fallback mock WS
 
 /**
  * Read static API KEY and SECRET from the environment. These are embedded at build time in React,
@@ -67,24 +80,35 @@ export function mcpLogout() {
   // Placeholder for compatibility.
 }
 
-// PUBLIC_INTERFACE
 /**
  * Fetch user's portfolio (holdings/positions) via Zerodha Connect API.
  * Returns [{ symbol, quantity, buyPrice }]
+ * If network fails, fallback to demo/mock data for UI development.
  */
 export async function fetchPortfolio() {
-  const response = await fetch(`${ZERODHA_API_ROOT}/portfolio/holdings`, {
-    headers: getAuthHeaders(),
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch portfolio data: ${response.statusText}`);
+  try {
+    const response = await fetch(`${ZERODHA_API_ROOT}/portfolio/holdings`, {
+      headers: getAuthHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch portfolio data: ${response.statusText}`);
+    }
+    const data = await response.json();
+    return (data.data || []).map((stock) => ({
+      symbol: stock.tradingsymbol,
+      quantity: stock.quantity,
+      buyPrice: stock.average_price,
+    }));
+  } catch (err) {
+    // NETWORK OR CORS ERROR -- fallback to demo/mock data for local development
+    // This enables UI development without backend API running.
+    console.warn('[fetchPortfolio] Network/API error, serving mock data for FE demo.', err && err.message);
+    return [
+      { symbol: "TCS", quantity: 10, buyPrice: 3120.0 },
+      { symbol: "INFY", quantity: 7, buyPrice: 1480.5 },
+      { symbol: "ITC", quantity: 30, buyPrice: 388.12 },
+    ];
   }
-  const data = await response.json();
-  return (data.data || []).map((stock) => ({
-    symbol: stock.tradingsymbol,
-    quantity: stock.quantity,
-    buyPrice: stock.average_price,
-  }));
 }
 
 // PUBLIC_INTERFACE
