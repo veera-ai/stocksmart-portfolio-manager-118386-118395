@@ -229,6 +229,21 @@ app.get('/api/health', (req, res) => res.json({ status: "ok" }));
 // --- Static serve for production builds (optional; ensure static dir exists if used) ---
 app.use(express.static(path.join(__dirname, 'public')));
 
+/**
+ * CATCH-ALL HANDLER FOR UNMATCHED API ROUTES
+ * Improves troubleshooting of 404s due to typos/missing endpoints.
+ * Returns a JSON 404 for any /api/* route not handled above.
+ */
+app.all('/api/*', (req, res) => {
+  console.warn(`[404] API Route Not Found: ${req.method} ${req.originalUrl}`);
+  res.status(404).json({
+    error: "API route not found",
+    route: req.originalUrl,
+    method: req.method,
+    note: "Check that the frontend is calling the correct backend endpoint, and that the backend is running with the correct API root."
+  });
+});
+
 // --- Start Server ---
 app.listen(APP_PORT, () => {
   console.log(`Kite backend running on port ${APP_PORT}`);
