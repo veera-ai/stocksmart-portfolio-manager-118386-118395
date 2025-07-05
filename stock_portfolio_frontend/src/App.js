@@ -107,8 +107,15 @@ function App() {
   };
 
   // Start OAuth2 login (redirect to backend login endpoint)
+  // PUBLIC_INTERFACE
+  /**
+   * Initiates OAuth2 login by redirecting the user to the backend login endpoint for Zerodha Kite.
+   * Redirects to /api/login/kite as expected by the backend. Adjust CLIENT_URL and API root if behind proxy.
+   */
   const handleKiteLogin = () => {
-    window.location.href = `${process.env.REACT_APP_ZERODHA_API_ROOT || 'http://localhost:5001'}/api/login/kite`;
+    // Defensive: ensure only a single / between root and endpoint.
+    const apiRoot = (process.env.REACT_APP_ZERODHA_API_ROOT || 'http://localhost:5001').replace(/\/$/, "");
+    window.location.href = `${apiRoot}/api/login/kite`;
   };
 
   // Navigation
