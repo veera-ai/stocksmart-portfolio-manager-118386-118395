@@ -1,4 +1,4 @@
-/**
+ /**
  * API wrapper for Zerodha MCP/Kite with API key/secret auth.
  * Now authenticates using static API key/secret from environment (.env) rather than runtime username/password/MFA.
  * API_SECRET is NEVER returned to client, sent to backend or logged.
@@ -7,7 +7,7 @@
  * ---------- IMPORTANT DEV NOTE ----------
  * If 'Failed to fetch' occurs: 
  * 1. You may not have a backend/mock API running at ZERODHA_API_ROOT.
- * 2. For UI development, this file now provides a mock data fallback.
+ * 2. For UI development, this file previously provided a mock data fallback.
  * 3. To connect to a real backend (Flask/Express/other), set REACT_APP_ZERODHA_API_ROOT in .env to your backend endpoint.
  * Example:
  *   REACT_APP_ZERODHA_API_ROOT=http://localhost:5001
@@ -80,34 +80,47 @@ export function mcpLogout() {
   // Placeholder for compatibility.
 }
 
+// PUBLIC_INTERFACE
 /**
  * Fetch user's portfolio (holdings/positions) via Zerodha Connect API.
  * Returns [{ symbol, quantity, buyPrice }]
- * If network fails, fallback to demo/mock data for UI development.
+ * Now REQUIRES a working backend or direct Zerodha API; no mock fallback.
+ * If authentication is required, guides user to login/OAuth.
  */
 export async function fetchPortfolio() {
   try {
     const response = await fetch(`${ZERODHA_API_ROOT}/portfolio/holdings`, {
       headers: getAuthHeaders(),
+      credentials: "include", // Allow sending cookies for OAuth flows if present
     });
+    if (response.status === 401 || response.status === 403) {
+      // If no session/token - most likely needs user intervention (OAuth)
+      throw new Error(
+        "Zerodha authentication required. Please login using Kite and authorize access. " +
+        "Follow the instructions on screen or visit https://kite.trade/docs/connect/v3/#login-flow. \n" +
+        "If running locally, backend should handle the OAuth redirect flow and set necessary cookies/tokens."
+      );
+    }
     if (!response.ok) {
       throw new Error(`Failed to fetch portfolio data: ${response.statusText}`);
     }
     const data = await response.json();
-    return (data.data || []).map((stock) => ({
+    if (!data.data || !Array.isArray(data.data)) {
+      throw new Error("Portfolio data format invalid or empty from API.");
+    }
+    return data.data.map((stock) => ({
       symbol: stock.tradingsymbol,
       quantity: stock.quantity,
       buyPrice: stock.average_price,
     }));
   } catch (err) {
-    // NETWORK OR CORS ERROR -- fallback to demo/mock data for local development
-    // This enables UI development without backend API running.
-    console.warn('[fetchPortfolio] Network/API error, serving mock data for FE demo.', err && err.message);
-    return [
-      { symbol: "TCS", quantity: 10, buyPrice: 3120.0 },
-      { symbol: "INFY", quantity: 7, buyPrice: 1480.5 },
-      { symbol: "ITC", quantity: 30, buyPrice: 388.12 },
-    ];
+    // Do NOT fallback to mock, show API/OAuth error directly
+    throw new Error(
+      "Failed to fetch portfolio from Zerodha: " +
+      (err && err.message
+        ? err.message
+        : "Unknown error. Please ensure valid API credentials or complete the OAuth login.")
+    );
   }
 }
 
