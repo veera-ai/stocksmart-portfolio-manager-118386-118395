@@ -1,0 +1,196 @@
+openapi: 3.0.3
+info:
+  title: Kite Backend API
+  description: >
+    Backend Express API for Zerodha Kite Connect OAuth and Portfolio endpoints.
+    Handles OAuth login flow, session management, and portfolio retrieval for users of the StockSmart portfolio manager.
+
+    **Authentication:**  
+    All endpoints requiring user authentication use secure HTTP-only session cookies set via express-session.  
+    The access_token never leaves the backend. The frontend should use "credentials: include" in fetch requests.
+
+    **Session-based Auth:**  
+    Most protected endpoints (such as `/api/portfolio/holdings`) require a valid login and session.
+
+  version: "1.0.0"
+servers:
+  - url: http://localhost:5001
+    description: Local development server
+
+tags:
+  - name: OAuth
+    description: Kite Connect OAuth2 endpoints
+  - name: Portfolio
+    description: Portfolio data endpoints (require valid authenticated session)
+  - name: Session
+    description: Session state and logout endpoints
+
+paths:
+  /api/login/kite:
+    get:
+      summary: Start Zerodha Kite OAuth login
+      description: >
+        Redirects user to Zerodha's OAuth login screen.  
+        Used to start the OAuth2 login flow.
+      tags: [OAuth]
+      responses:
+        "302":
+          description: Redirects to Kite Connect OAuth login URL
+          headers:
+            Location:
+              description: Kite Connect OAuth login URL
+              schema:
+                type: string
+        "500":
+          description: Server error (missing API Key)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /api/auth/kite/callback:
+    get:
+      summary: OAuth2 callback handler
+      description: >
+        Handles Zerodha's OAuth redirect.
+        Exchanges request_token for access_token, stores in secure backend session (never exposed to frontend).
+        Frontend should not see or use the access_token directly.
+        On success, redirects to the frontend with success status.
+      tags: [OAuth]
+      parameters:
+        - in: query
+          name: request_token
+          schema:
+            type: string
+          required: false
+          description: The request_token returned by Kite upon successful auth
+        - in: query
+          name: error
+          schema:
+            type: string
+          required: false
+          description: Error code if OAuth failed
+        - in: query
+          name: action
+          schema:
+            type: string
+          required: false
+          description: Error context
+      responses:
+        "302":
+          description: >
+            Redirects to frontend with status message if successful;
+            error page with details if failed.
+        "400":
+          description: OAuth2 authorization failed
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /api/session/status:
+    get:
+      summary: Check login/session status for Kite Connect
+      description: >
+        Returns current login/session status.
+        Indicates whether user is authenticated/logged in via Kite, plus (if available) their Zerodha user_id.
+        Frontend should check this endpoint to determine session state.
+      tags: [Session]
+      responses:
+        "200":
+          description: Session info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  loggedIn:
+                    type: boolean
+                    description: Whether the current session is authenticated with a valid access_token.
+                  user_id:
+                    type: string
+                    nullable: true
+                    description: Zerodha user_id (null if not logged in)
+
+  /api/portfolio/holdings:
+    get:
+      summary: Fetch user's live portfolio holdings from Zerodha
+      description: >
+        Returns user's live portfolio holdings as fetched from the Kite Connect API.
+        **Authentication required:** Must have an active session with access_token (OAuth login).
+      tags: [Portfolio]
+      responses:
+        "200":
+          description: Live portfolio holdings (as returned from Kite Connect)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    description: Array of portfolio holding objects
+                    items:
+                      type: object
+                      properties:
+                        tradingsymbol:
+                          type: string
+                        quantity:
+                          type: number
+                        average_price:
+                          type: number
+                        # Other properties may exist and depend on Kite API's response structure
+        "401":
+          description: User is not authenticated / session expired
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        "500":
+          description: Internal server or API error while fetching holdings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  details:
+                    type: string
+
+  /api/logout:
+    post:
+      summary: Logout the current user and destroy session
+      description: >
+        Logs out authenticated user by destroying the backend session and clearing the session cookie.
+        Frontend should call this on user logout and then update state accordingly.
+      tags: [Session]
+      responses:
+        "200":
+          description: Successfully logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        "500":
+          description: Error destroying session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+components: {}
+
+security: []
